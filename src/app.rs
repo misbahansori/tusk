@@ -32,6 +32,8 @@ mod agent_panel;
 mod conn_picker;
 #[path = "app_conns.rs"]
 mod conns;
+#[path = "app_dbpicker.rs"]
+mod db_picker;
 #[path = "app_ddl.rs"]
 mod ddl_view;
 #[path = "app_edit.rs"]
@@ -286,6 +288,8 @@ pub struct TuskApp {
     ai: agent_panel::AiPanel,
     /// The open connection switcher in the title bar.
     conn_picker: Option<Entity<conn_picker::ConnPicker>>,
+    /// The open database switcher in the title bar.
+    db_picker: Option<Entity<db_picker::DbPicker>>,
     /// ⌥⌘P sheet: the pending SQL of the active tab.
     preview: Option<Entity<gpui_kit::component::input::EditorState>>,
     /// ⌘. sheet: the server's sessions.
@@ -400,6 +404,7 @@ impl TuskApp {
             row_panel: Default::default(),
             ai: Default::default(),
             conn_picker: None,
+            db_picker: None,
             preview: None,
             processes: None,
             db_search: None,
@@ -446,8 +451,8 @@ impl TuskApp {
     }
 
     /// Title bar. Left: `⛁ database ▾ / ◫ schema ▾` (like an editor's
-    /// `project ⎇ branch`) — each opens the kit dropdown to switch database /
-    /// schema. Right: the connection pill `● Local Docker  host:port ▾`
+    /// `project ⎇ branch`) — the database opens a searchable popover, the
+    /// schema the kit dropdown. Right: the connection pill `● Local Docker  host:port ▾`
     /// (switch connection, new connection, disconnect).
     fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = cx.theme();
@@ -479,30 +484,30 @@ impl TuskApp {
                     .child(Icon::new(IconName::ChevronDown).size(px(11.))),
             )
         };
-        let current_db = self.current_database();
-        let dbs = self.databases.clone();
-        let db_menu = crumb(
-            "title-db",
-            include_bytes!("../assets/icons/ui/database.svg"),
-            current_db.clone(),
-        )
-        .dropdown_menu(move |menu, _, _| {
-            let mut menu = menu.max_h(px(360.)).scrollable(true);
-            for name in &dbs {
-                let go = name.clone();
-                menu = menu.item(
-                    PopupMenuItem::new(name.clone())
-                        .checked(*name == current_db)
-                        .on_click(move |_, window, cx| {
-                            let view = cx.global::<TuskHandle>().0.clone();
-                            view.update(cx, |this, cx| {
-                                this.switch_database(go.clone(), window, cx)
-                            });
-                        }),
-                );
-            }
-            menu
-        });
+        let db_open = self.db_picker.clone();
+        let db_menu = Popover::new("title-db-pop")
+            .open(db_open.is_some())
+            .on_open_change(move |open, window, cx| {
+                let open = *open;
+                let view = cx.global::<TuskHandle>().0.clone();
+                view.update(cx, |app, cx| {
+                    if open {
+                        app.open_db_picker(window, cx);
+                    } else {
+                        app.db_picker = None;
+                        cx.notify();
+                    }
+                });
+            })
+            .trigger(crumb(
+                "title-db",
+                include_bytes!("../assets/icons/ui/database.svg"),
+                self.current_database(),
+            ))
+            .content(move |_, _, _| match &db_open {
+                Some(p) => p.clone().into_any_element(),
+                None => div().into_any_element(),
+            });
         let current_schema = self.current_schema.clone();
         let schemas = self.schemas.clone();
         let schema_menu = crumb(

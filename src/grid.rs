@@ -608,6 +608,37 @@ impl GridDelegate {
             .is_some_and(|k| self.deleted.contains_key(&k))
     }
 
+    /// Mark (`delete`) or unmark rows `from..=to` for deletion as one undo
+    /// step. A new, unsaved row is simply dropped.
+    pub fn set_rows_deleted(&mut self, from: usize, to: usize, delete: bool) {
+        if !self.editable {
+            return;
+        }
+        let before = self.snapshot();
+        for row_ix in from..=to {
+            let (Some(key), Some(original)) =
+                (self.row_key(row_ix), self.rows.get(&row_ix).cloned())
+            else {
+                continue;
+            };
+            if self.editing.as_ref().is_some_and(|e| e.key == key) {
+                self.editing = None;
+            }
+            if key.starts_with("new:") {
+                if delete {
+                    self.inserted.retain(|k| *k != key);
+                    self.edits.remove(&key);
+                }
+            } else if delete {
+                self.deleted.entry(key).or_insert(original);
+            } else {
+                self.deleted.remove(&key);
+            }
+        }
+        let after = self.snapshot();
+        self.history.record(before, &after);
+    }
+
     /// Delete key: mark / unmark the row for deletion (red until ⌘S).
     pub fn toggle_delete(&mut self, row_ix: usize) {
         if !self.editable {
@@ -1755,16 +1786,20 @@ fn cell_menu(
         .item(PopupMenuItem::submenu("Sort", sort_menu));
     if editable {
         let e = entity.clone();
+        // Over a multi-row selection this marks (or, if the clicked row is
+        // already marked, unmarks) every selected row.
         let toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
             e.update(cx, |st, cx| {
-                st.delegate_mut().toggle_delete(row_ix);
+                st.delegate_mut()
+                    .set_rows_deleted(first_row, last_row, !deleted);
                 cx.notify();
             });
         };
-        menu = menu.separator().item(if deleted {
-            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
-        } else {
-            crate::theme::danger_item("Delete Row", toggle)
+        menu = menu.separator().item(match (deleted, many_rows) {
+            (true, false) => PopupMenuItem::new("Undo Delete Row").on_click(toggle),
+            (true, true) => PopupMenuItem::new("Undo Delete Rows").on_click(toggle),
+            (false, false) => crate::theme::danger_item("Delete Row", toggle),
+            (false, true) => crate::theme::danger_item("Delete Rows", toggle),
         });
     }
     menu

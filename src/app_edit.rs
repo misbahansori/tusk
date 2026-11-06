@@ -925,9 +925,15 @@ impl TuskApp {
         }
         if let Some(WorkspaceTab::Sql(t)) = self.active_tab.and_then(|ix| self.tabs.get(ix)) {
             t.result.update(cx, |st, cx| {
-                let row = st.selected_row().or(st.selected_cell().map(|c| c.0));
-                if let Some(row) = row {
-                    st.delegate_mut().toggle_delete(row);
+                // A multi-row range deletes (or undoes) all its rows.
+                let rows = st.selected_range().map(|((r0, _), (r1, _))| (r0, r1)).or_else(|| {
+                    st.selected_row()
+                        .or(st.selected_cell().map(|c| c.0))
+                        .map(|r| (r, r))
+                });
+                if let Some((from, to)) = rows {
+                    let delete = !st.delegate().is_row_deleted(from);
+                    st.delegate_mut().set_rows_deleted(from, to, delete);
                     cx.notify();
                 }
             });
@@ -953,9 +959,15 @@ impl TuskApp {
                 }
             }),
             _ => tab.state.update(cx, |st, cx| {
-                let row = st.selected_row().or(st.selected_cell().map(|c| c.0));
-                if let Some(row) = row {
-                    st.delegate_mut().toggle_delete(row);
+                // A multi-row range deletes (or undoes) all its rows.
+                let rows = st.selected_range().map(|((r0, _), (r1, _))| (r0, r1)).or_else(|| {
+                    st.selected_row()
+                        .or(st.selected_cell().map(|c| c.0))
+                        .map(|r| (r, r))
+                });
+                if let Some((from, to)) = rows {
+                    let delete = !st.delegate().is_row_deleted(from);
+                    st.delegate_mut().set_rows_deleted(from, to, delete);
                     cx.notify();
                 }
             }),

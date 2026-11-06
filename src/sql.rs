@@ -354,6 +354,26 @@ impl QueryDelegate {
         self.set_change(row_ix, col_ix, (!was_null).then_some(None));
     }
 
+    /// Mark (`delete`) or unmark rows `from..=to` for deletion as one undo step.
+    pub fn set_rows_deleted(&mut self, from: usize, to: usize, delete: bool) {
+        if self.source.is_none() || self.rows.is_empty() {
+            return;
+        }
+        let before = self.snapshot();
+        for row_ix in from..=to.min(self.rows.len() - 1) {
+            if self.editing.as_ref().is_some_and(|e| e.row == row_ix) {
+                self.editing = None;
+            }
+            if delete {
+                self.deleted.insert(row_ix);
+            } else {
+                self.deleted.remove(&row_ix);
+            }
+        }
+        let after = self.snapshot();
+        self.history.record(before, &after);
+    }
+
     pub fn toggle_delete(&mut self, row_ix: usize) {
         if self.source.is_none() || row_ix >= self.rows.len() {
             return;
@@ -452,6 +472,12 @@ fn result_cell_menu(
         .get(col_ix)
         .map(|c| c.name.clone())
         .unwrap_or_default();
+    // One row, or every row of a multi-row selection (whole rows).
+    let (first_row, last_row) = entity
+        .read(cx)
+        .selected_range()
+        .map_or((row_ix, row_ix), |((r0, _), (r1, _))| (r0, r1));
+    let many_rows = last_row > first_row;
     let e = entity.clone();
     let copy_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
         for fmt in CopyFormat::ALL {
@@ -459,15 +485,21 @@ fn result_cell_menu(
             m = m.item(PopupMenuItem::new(fmt.label()).on_click(move |_, _, cx| {
                 let d = e.read(cx).delegate();
                 let cols: Vec<String> = d.columns.iter().map(|c| c.name.clone()).collect();
-                let row: Vec<Value> = (0..cols.len())
-                    .map(|c| d.display_value(row_ix, c).unwrap_or(Value::Null))
+                let rows: Vec<Vec<Value>> = (first_row..=last_row)
+                    .filter(|r| *r < d.rows.len())
+                    .map(|r| {
+                        (0..cols.len())
+                            .map(|c| d.display_value(r, c).unwrap_or(Value::Null))
+                            .collect()
+                    })
                     .collect();
                 let target = d.source.as_ref().map(|src| Target {
                     schema: &src.schema,
                     table: &src.table,
                     key: &src.key,
                 });
-                let out = format_rows(fmt, &cols, &[row], target.as_ref(), fmt != CopyFormat::Json);
+                let out =
+                    format_rows(fmt, &cols, &rows, target.as_ref(), fmt != CopyFormat::Json);
                 cx.write_to_clipboard(ClipboardItem::new_string(out));
             }));
         }
@@ -505,7 +537,10 @@ fn result_cell_menu(
                 cx.write_to_clipboard(ClipboardItem::new_string(col_name.clone()));
             }),
         )
-        .item(PopupMenuItem::submenu("Copy Row As", copy_menu))
+        .item(PopupMenuItem::submenu(
+            if many_rows { "Copy Rows As" } else { "Copy Row As" },
+            copy_menu,
+        ))
         .item({
             let e = entity.clone();
             PopupMenuItem::new("Send Row to Chat")
@@ -528,14 +563,16 @@ fn result_cell_menu(
         let e = entity.clone();
         let toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
             e.update(cx, |st, cx| {
-                st.delegate_mut().toggle_delete(row_ix);
+                st.delegate_mut()
+                    .set_rows_deleted(first_row, last_row, !deleted);
                 cx.notify();
             });
         };
-        menu = menu.separator().item(if deleted {
-            PopupMenuItem::new("Undo Delete Row").on_click(toggle)
-        } else {
-            crate::theme::danger_item("Delete Row", toggle)
+        menu = menu.separator().item(match (deleted, many_rows) {
+            (true, false) => PopupMenuItem::new("Undo Delete Row").on_click(toggle),
+            (true, true) => PopupMenuItem::new("Undo Delete Rows").on_click(toggle),
+            (false, false) => crate::theme::danger_item("Delete Row", toggle),
+            (false, true) => crate::theme::danger_item("Delete Rows", toggle),
         });
     }
     menu

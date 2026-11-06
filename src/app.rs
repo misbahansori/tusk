@@ -701,6 +701,7 @@ impl TuskApp {
                     &format!("{p} — [cmd-s] to save"),
                     edited,
                 ))
+                .child(div().text_color(edited.opacity(0.6)).child("·"))
                 .child(
                     // Click (or ⇧⌘⌫) throws the pending changes away.
                     div()
@@ -709,7 +710,7 @@ impl TuskApp {
                         .rounded(crate::theme::RADIUS_SM)
                         .hover(|this| this.bg(edited.opacity(0.15)))
                         .child(crate::kbd::rich_colored(
-                            "Discard [cmd-shift-backspace]",
+                            "[cmd-shift-backspace] to discard",
                             edited,
                         ))
                         .on_click(cx.listener(|this, _, _, cx| this.discard_changes(cx))),

@@ -113,6 +113,22 @@ impl TableKind {
     }
 }
 
+/// Splits a name into a head and a short tail for middle-ellipsis display:
+/// render the head with `truncate()` and the tail unshrinkable. Short names
+/// come back whole (empty tail).
+fn split_for_middle_ellipsis(name: &str) -> (String, String) {
+    const TAIL: usize = 8;
+    let count = name.chars().count();
+    if count <= TAIL * 2 {
+        return (name.to_string(), String::new());
+    }
+    let cut = name
+        .char_indices()
+        .nth(count - TAIL)
+        .map_or(name.len(), |(i, _)| i);
+    (name[..cut].to_string(), name[cut..].to_string())
+}
+
 /// Which object list the sidebar shows — switched from the panel
 /// icons at the left of the status bar.
 #[derive(Clone, Copy, PartialEq)]
@@ -3100,17 +3116,29 @@ impl TuskApp {
                         .font_family(crate::settings::ui_font()),
                 )
                 .into_any_element(),
-            None => div()
-                .text_size(px(crate::settings::ui_text()))
-                .font_family(crate::settings::ui_font())
-                .text_color(if selected || dropping || renamed.is_some() {
-                    foreground
-                } else {
-                    muted
-                })
-                .when(dropping, |this| this.line_through())
-                .child(renamed.clone().unwrap_or_else(|| name.clone()))
-                .into_any_element(),
+            None => {
+                let (head, tail) = split_for_middle_ellipsis(renamed.as_deref().unwrap_or(&name));
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .overflow_hidden()
+                    .text_size(px(crate::settings::ui_text()))
+                    .font_family(crate::settings::ui_font())
+                    .text_color(if selected || dropping || renamed.is_some() {
+                        foreground
+                    } else {
+                        muted
+                    })
+                    .when(dropping, |this| this.line_through())
+                    // The head gives way (ending in "…") while the tail stays
+                    // whole, so a long name is trimmed in the middle.
+                    .child(div().min_w_0().truncate().child(head))
+                    .when(!tail.is_empty(), |this| {
+                        this.child(div().flex_none().whitespace_nowrap().child(tail))
+                    })
+                    .into_any_element()
+            }
         };
         let (kind_c, name_c) = (kind.clone(), name.clone());
         let (kind_m, name_m) = (kind.clone(), name.clone());
@@ -3132,7 +3160,7 @@ impl TuskApp {
                 this.bg(rgb(crate::theme::DELETED).opacity(0.35))
             })
             .hover(|this| this.bg(muted.opacity(0.08)))
-            .child(icon)
+            .child(icon.flex_none())
             .child(label)
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.sidebar_focus.focus(window, cx);
@@ -3264,9 +3292,10 @@ impl TuskApp {
                         .h(px(crate::settings::row_h()))
                         .rounded(crate::theme::RADIUS_SM)
                         .bg(rgb(crate::theme::ADDED).opacity(if active { 0.35 } else { 0.25 }))
-                        .child(TableKind::Table.icon())
+                        .child(TableKind::Table.icon().flex_none())
                         .child(
                             div()
+                                .min_w_0()
                                 .text_size(px(crate::settings::ui_text()))
                                 .font_family(crate::settings::ui_font())
                                 .text_color(cx.theme().foreground)

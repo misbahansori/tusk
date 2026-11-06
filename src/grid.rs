@@ -1609,6 +1609,12 @@ fn cell_menu(
         .map(crate::copy_as::plain)
         .unwrap_or_default();
 
+    // One row, or every row of a multi-row selection (whole rows).
+    let (first_row, last_row) = entity
+        .read(cx)
+        .selected_range()
+        .map_or((row_ix, row_ix), |((r0, _), (r1, _))| (r0, r1));
+    let many_rows = last_row > first_row;
     let e = entity.clone();
     let copy_menu = PopupMenu::build(window, cx, move |mut m, _, _| {
         for fmt in CopyFormat::ALL {
@@ -1616,15 +1622,18 @@ fn cell_menu(
             m = m.item(PopupMenuItem::new(fmt.label()).on_click(move |_, _, cx| {
                 let d = e.read(cx).delegate();
                 let (cols, key) = (d.column_names(), d.key_columns());
-                let Some(row) = d.row_values(row_ix) else {
+                let rows: Vec<Vec<Value>> = (first_row..=last_row)
+                    .filter_map(|r| d.row_values(r))
+                    .collect();
+                if rows.is_empty() {
                     return;
-                };
+                }
                 let target = Target {
                     schema: &d.schema,
                     table: &d.table,
                     key: &key,
                 };
-                let out = format_rows(fmt, &cols, &[row], Some(&target), fmt != CopyFormat::Json);
+                let out = format_rows(fmt, &cols, &rows, Some(&target), fmt != CopyFormat::Json);
                 cx.write_to_clipboard(ClipboardItem::new_string(out));
             }));
         }
@@ -1722,7 +1731,10 @@ fn cell_menu(
                 cx.write_to_clipboard(ClipboardItem::new_string(col_name.clone()));
             }),
         )
-        .item(PopupMenuItem::submenu("Copy Row As", copy_menu))
+        .item(PopupMenuItem::submenu(
+            if many_rows { "Copy Rows As" } else { "Copy Row As" },
+            copy_menu,
+        ))
         .item({
             let e = entity.clone();
             PopupMenuItem::new("Send Row to Chat")

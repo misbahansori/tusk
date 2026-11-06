@@ -671,6 +671,50 @@ impl TuskApp {
         self.apply_filters(ix, cx);
     }
 
+    /// Column header menu "Filter by <column>": open the filter bar with this
+    /// column picked and the value field focused. An empty row is reused;
+    /// otherwise a new row is added.
+    pub fn filter_by_column(&mut self, col_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ix) = self.active_tab else { return };
+        let Some(tab) = self.grid_tab_mut(ix) else {
+            return;
+        };
+        tab.filters.visible = true;
+        let reuse = tab
+            .filters
+            .rows
+            .iter()
+            .rposition(|r| r.value.read(cx).value().trim().is_empty());
+        let row_ix = match reuse {
+            Some(i) => i,
+            None => {
+                self.add_filter_row(ix, None, window, cx);
+                let n = self.grid_tab(ix).map_or(0, |t| t.filters.rows.len());
+                n.saturating_sub(1)
+            }
+        };
+        let columns: Vec<String> = self
+            .grid_tab(ix)
+            .map(|t| {
+                t.state
+                    .read(cx)
+                    .delegate()
+                    .metas
+                    .iter()
+                    .map(|m| m.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(tab) = self.grid_tab_mut(ix)
+            && let Some(row) = tab.filters.rows.get_mut(row_ix)
+        {
+            row.column = Some(col_ix);
+            row.sync_pickers(&columns, window, cx);
+            row.value.read(cx).focus_handle(cx).focus(window, cx);
+        }
+        cx.notify();
+    }
+
     fn remove_filter_row(&mut self, ix: usize, row: usize, cx: &mut Context<Self>) {
         if let Some(tab) = self.grid_tab_mut(ix)
             && row < tab.filters.rows.len()

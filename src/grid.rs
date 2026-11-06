@@ -1405,17 +1405,30 @@ impl TableDelegate for GridDelegate {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let col = &self.columns[col_ix];
+        let name = col.name.clone();
         let t = cx.theme();
         // Name only (types live in the Structure view), medium weight;
         // numeric columns right-align the header with their values.
         div()
-            .when(col.right_align, |this| this.w_full().text_right())
+            .id(("grid-th", col_ix))
+            .w_full()
+            .when(col.right_align, |this| this.text_right())
             .px_2()
             .text_size(px(crate::settings::table_text()))
             .font_weight(FontWeight::MEDIUM)
             .font_family(crate::settings::table_font())
             .text_color(t.colors.foreground)
             .child(col.name.clone())
+            .context_menu(move |menu, _, _| {
+                menu.item(
+                    PopupMenuItem::new(format!("Filter by “{name}”")).on_click(
+                        move |_, window, cx| {
+                            let view = cx.global::<crate::app::TuskHandle>().0.clone();
+                            view.update(cx, |app, cx| app.filter_by_column(col_ix, window, cx));
+                        },
+                    ),
+                )
+            })
     }
 
     fn render_tr(

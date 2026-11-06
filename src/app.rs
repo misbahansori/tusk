@@ -689,14 +689,31 @@ impl TuskApp {
         // the title bar — the status bar only carries transient messages.)
         // Layout: [toggles · message] | centered pending changes | [spacer].
         let pending = self.pending_summary(cx).map(|p| {
+            let edited: gpui::Hsla = rgb(crate::theme::EDITED).into();
             div()
+                .flex()
+                .items_center()
+                .gap_2()
                 .text_caption()
                 .font_family(crate::settings::ui_font())
-                .text_color(rgb(crate::theme::EDITED))
+                .text_color(edited)
                 .child(crate::kbd::rich_colored(
                     &format!("{p} — [cmd-s] to save"),
-                    rgb(crate::theme::EDITED).into(),
+                    edited,
                 ))
+                .child(
+                    // Click (or ⇧⌘⌫) throws the pending changes away.
+                    div()
+                        .id("status-discard")
+                        .px_1()
+                        .rounded(crate::theme::RADIUS_SM)
+                        .hover(|this| this.bg(edited.opacity(0.15)))
+                        .child(crate::kbd::rich_colored(
+                            "Discard [cmd-shift-backspace]",
+                            edited,
+                        ))
+                        .on_click(cx.listener(|this, _, _, cx| this.discard_changes(cx))),
+                )
         });
         div()
             .h(px(crate::settings::bar_h()))

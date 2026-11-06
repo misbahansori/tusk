@@ -312,6 +312,33 @@ impl CommandState {
         }
     }
 
+    /// The order to list `self.model.entries` in for `query`: as given, unless
+    /// a query is filtering a list of plain items, which sorts by match score
+    /// (ties keep their given order) and drops the separators.
+    fn entry_order(&self, query: &str) -> Vec<usize> {
+        let all = 0..self.model.entries.len();
+        let ranking = self.model.searchable
+            && self.model.filterable
+            && !query.is_empty()
+            && !self
+                .model
+                .entries
+                .iter()
+                .any(|entry| matches!(entry, CommandEntry::Group(_)));
+        if !ranking {
+            return all.collect();
+        }
+
+        let mut scored: Vec<(i32, usize)> = all
+            .filter_map(|ix| match &self.model.entries[ix] {
+                CommandEntry::Item(item) => item.score(query).map(|score| (score, ix)),
+                _ => None,
+            })
+            .collect();
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.into_iter().map(|(_, ix)| ix).collect()
+    }
+
     fn item_at(&self, matched_ix: usize) -> Option<&CommandItem> {
         let matched = self.matched.get(matched_ix)?;
 
@@ -335,18 +362,28 @@ impl CommandState {
             .entries
             .iter()
             .any(|entry| matches!(entry, CommandEntry::Item(_)));
-        let mut ungrouped_item_ix = 0;
         let mut group_ix = 0;
         // A separator is only drawn once something follows it, which drops the
         // leading, trailing and doubled separators a filtered list leaves behind.
         let mut pending_separator = false;
 
-        for (entry_ix, entry) in self.model.entries.iter().enumerate() {
+        // A query ranks a flat list best match first, like VS Code's palette.
+        // Grouped lists keep their order: the headings fix it.
+        let order = self.entry_order(query);
+        let mut ungrouped_ix = vec![0; self.model.entries.len()];
+        for (n, entry_ix) in (0..self.model.entries.len())
+            .filter(|&ix| matches!(self.model.entries[ix], CommandEntry::Item(_)))
+            .enumerate()
+        {
+            ungrouped_ix[entry_ix] = n;
+        }
+
+        for entry_ix in order {
+            let entry = &self.model.entries[entry_ix];
             match entry {
                 CommandEntry::Separator => pending_separator = !rows.is_empty(),
                 CommandEntry::Item(item) => {
-                    let item_ix = ungrouped_item_ix;
-                    ungrouped_item_ix += 1;
+                    let item_ix = ungrouped_ix[entry_ix];
                     if !self.item_matches(item, query) {
                         continue;
                     }

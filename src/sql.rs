@@ -374,21 +374,6 @@ impl QueryDelegate {
         self.history.record(before, &after);
     }
 
-    pub fn toggle_delete(&mut self, row_ix: usize) {
-        if self.source.is_none() || row_ix >= self.rows.len() {
-            return;
-        }
-        if self.editing.as_ref().is_some_and(|e| e.row == row_ix) {
-            self.editing = None;
-        }
-        let before = self.snapshot();
-        if !self.deleted.remove(&row_ix) {
-            self.deleted.insert(row_ix);
-        }
-        let after = self.snapshot();
-        self.history.record(before, &after);
-    }
-
     /// UPDATE/DELETE by primary key for every pending change (deletes first).
     pub fn save_statements(&self) -> Vec<Stmt> {
         let Some(src) = &self.source else {

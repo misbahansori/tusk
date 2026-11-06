@@ -639,33 +639,6 @@ impl GridDelegate {
         self.history.record(before, &after);
     }
 
-    /// Delete key: mark / unmark the row for deletion (red until ⌘S).
-    pub fn toggle_delete(&mut self, row_ix: usize) {
-        if !self.editable {
-            return;
-        }
-        let (Some(key), Some(original)) = (self.row_key(row_ix), self.rows.get(&row_ix).cloned())
-        else {
-            return;
-        };
-        if self.editing.as_ref().is_some_and(|e| e.key == key) {
-            self.editing = None;
-        }
-        let before = self.snapshot();
-        if key.starts_with("new:") {
-            self.inserted.retain(|k| *k != key);
-            self.edits.remove(&key);
-            let after = self.snapshot();
-            self.history.record(before, &after);
-            return;
-        }
-        if self.deleted.remove(&key).is_none() {
-            self.deleted.insert(key, original);
-        }
-        let after = self.snapshot();
-        self.history.record(before, &after);
-    }
-
     /// `WHERE` identifying one loaded row: primary key if any, else ctid.
     fn key_predicate(
         &self,

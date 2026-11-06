@@ -39,6 +39,20 @@ fn toggle_lines(block: &str) -> String {
         .join("\n")
 }
 
+/// `sql` laid out one clause per line, indented two spaces, with keywords in
+/// capitals. Comments, string literals and `$1` / `::type` pass through.
+fn prettify(sql: &str) -> String {
+    let options = sqlformat::FormatOptions {
+        indent: sqlformat::Indent::Spaces(2),
+        uppercase: Some(true),
+        dialect: sqlformat::Dialect::PostgreSql,
+        ..Default::default()
+    };
+    sqlformat::format(sql, &sqlformat::QueryParams::None, &options)
+        .trim()
+        .to_string()
+}
+
 fn transform(text: &str, how: CaseTransform) -> String {
     match how {
         CaseTransform::Upper => text.to_uppercase(),
@@ -116,6 +130,46 @@ impl TuskApp {
             };
             st.replace(new.clone(), window, cx);
             st.set_selected_range(sel.start..sel.start + new.len(), cx);
+        });
+    }
+
+    /// ⌥⌘F / the Prettify button: lay out the selection, or the whole editor
+    /// when nothing is selected. One undo step.
+    pub(super) fn prettify_sql(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The shortcut is bound in the "Input" context too; leave the palette's
+        // search box alone.
+        if self.palette.is_some() {
+            return;
+        }
+        let Some(editor) = self.active_sql_editor() else {
+            return;
+        };
+        editor.update(cx, |st, cx| {
+            let text = st.text().to_string();
+            let sel = st.selected_range();
+            let whole = sel.is_empty() || sel.len() >= text.len();
+            let range = if whole { 0..text.len() } else { sel };
+            let old = &text[range.clone()];
+            if old.trim().is_empty() {
+                return;
+            }
+            let new = prettify(old);
+            if new == old {
+                return;
+            }
+            let cursor = st.cursor().min(text.len());
+            st.set_selected_range(range.clone(), cx);
+            st.replace(new.clone(), window, cx);
+            if whole {
+                // Back near where the cursor was, on a character boundary.
+                let mut at = cursor.min(new.len());
+                while !new.is_char_boundary(at) {
+                    at -= 1;
+                }
+                st.set_selected_range(at..at, cx);
+            } else {
+                st.set_selected_range(range.start..range.start + new.len(), cx);
+            }
         });
     }
 
@@ -198,7 +252,7 @@ impl TuskApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{CaseTransform, toggle_lines, transform};
+    use super::{CaseTransform, prettify, toggle_lines, transform};
 
     #[test]
     fn line_comments_toggle_both_ways() {
@@ -217,5 +271,23 @@ mod tests {
             transform("user_name AND x", CaseTransform::Capitalize),
             "User_Name And X"
         );
+    }
+
+    #[test]
+    fn prettify_puts_each_clause_on_its_own_line() {
+        assert_eq!(
+            prettify("select id, name from users where id = 1 order by name"),
+            "SELECT\n  id,\n  name\nFROM\n  users\nWHERE\n  id = 1\nORDER BY\n  name"
+        );
+    }
+
+    #[test]
+    fn prettify_is_stable_and_keeps_literals_and_comments() {
+        let once = prettify("select 'a  b' as \"X y\" -- keep\nfrom t where n = $1::int");
+        assert!(once.contains("'a  b'"));
+        assert!(once.contains("\"X y\""));
+        assert!(once.contains("-- keep"));
+        assert!(once.contains("$1::int"));
+        assert_eq!(prettify(&once), once);
     }
 }

@@ -221,6 +221,12 @@ pub fn command_rows(app: &TuskApp) -> (Vec<CommandItem>, Vec<RunFn>) {
             &["comment"],
         );
         action(
+            "editor: prettify SQL",
+            IconName::TextAlignStart,
+            Box::new(PrettifySql),
+            &["format", "beautify", "indent", "layout"],
+        );
+        action(
             "editor: toggle block comment",
             IconName::Hash,
             Box::new(ToggleBlockComment),

@@ -2065,6 +2065,15 @@ impl TuskApp {
                                     .items_center()
                                     .gap_2()
                                     .child(
+                                        Button::new("prettify-sql")
+                                            .label("Prettify")
+                                            .small()
+                                            .ghost()
+                                            .on_click(cx.listener(|this, _, w, cx| {
+                                                this.prettify_sql(w, cx)
+                                            })),
+                                    )
+                                    .child(
                                         Button::new("run-sql-all")
                                             .label("Run All")
                                             .small()
@@ -4204,6 +4213,7 @@ impl Render for TuskApp {
             .on_action(
                 cx.listener(|this, _: &ToggleBlockComment, w, cx| this.toggle_block_comment(w, cx)),
             )
+            .on_action(cx.listener(|this, _: &PrettifySql, w, cx| this.prettify_sql(w, cx)))
             .on_action(cx.listener(|this, _: &MakeUpperCase, w, cx| {
                 this.transform_selection(editor_cmds::CaseTransform::Upper, w, cx)
             }))

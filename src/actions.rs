@@ -62,6 +62,7 @@ gpui_kit::actions!(
         GridCopyCells,
         GridPaste,
         ToggleBlockComment,
+        PrettifySql,
         MakeUpperCase,
         MakeLowerCase,
         Capitalize,
@@ -229,6 +230,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-space", ShowCompletions, Some("Input")),
         KeyBinding::new("secondary-/", ToggleLineComment, Some("Input")),
         KeyBinding::new("secondary-alt-/", ToggleBlockComment, Some("Input")),
+        // ⌥⌘F lays the query out one clause per line (selection, else all).
+        KeyBinding::new("secondary-alt-f", PrettifySql, Some("TuskApp")),
+        KeyBinding::new("secondary-alt-f", PrettifySql, Some("Input")),
         // Turkish Q: "/" is shift-7, which arrives as the US shifted key "&".
         KeyBinding::new("secondary-&", ToggleLineComment, Some("Input")),
         KeyBinding::new("secondary-=", IncreaseFontSize, Some("TuskApp")),

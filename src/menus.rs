@@ -142,6 +142,7 @@ pub fn refresh(cx: &mut App) {
             MenuItem::separator(),
             MenuItem::action("Toggle Line Comment", ToggleLineComment),
             MenuItem::action("Toggle Block Comment", ToggleBlockComment),
+            MenuItem::action("Prettify SQL", PrettifySql),
             MenuItem::action("Increase Font Size", IncreaseFontSize),
             MenuItem::action("Decrease Font Size", DecreaseFontSize),
             MenuItem::submenu(Menu::new("Transformations").items([
